@@ -29,8 +29,6 @@ from torchmetrics import PeakSignalNoiseRatio
 from torchmetrics.functional import structural_similarity_index_measure
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from typing_extensions import Literal
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import MinMaxScaler
 
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.configs.config_utils import to_immutable_dict
@@ -372,24 +370,6 @@ class KPlanesModel(Model):
         rgb = outputs["rgb"]
         acc = colormaps.apply_colormap(outputs["accumulation"])
         depth = colormaps.apply_depth_colormap(outputs["depth"], accumulation=outputs["accumulation"])
-        
-        grid = self.field.grids[0]
-        xt = grid.plane_coefs[2].data
-        yt = grid.plane_coefs[4].data
-        zt = grid.plane_coefs[5].data
-        
-        planes = []
-        scaler = MinMaxScaler((0, 1))
-        for mat in [xt, yt, zt]:
-            mat = mat.permute(2, 1, 0)
-            sh = mat.shape
-            mat = mat.reshape(-1, mat.shape[-1]).cpu()
-            pca = PCA(n_components=3)
-            pca_plane = pca.fit_transform(mat)
-            # pca_plane = scaler.fit_transform(pca_plane)
-            pca_plane = torch.from_numpy(pca_plane)
-            pca_plane = torch.sigmoid(pca_plane)
-            planes.append(colormaps.apply_colormap(pca_plane.reshape(sh[0], sh[1], -1)))
 
         combined_rgb = torch.cat([image, rgb], dim=1)
         combined_acc = torch.cat([acc], dim=1)
@@ -405,8 +385,7 @@ class KPlanesModel(Model):
             "ssim": float(self.ssim(image, rgb)),
             "lpips": float(self.lpips(image, rgb))
         }
-        images_dict = {"img": combined_rgb, "accumulation": combined_acc, "depth": combined_depth,
-                       "xt": planes[0], "yt": planes[1], "zt": planes[2]}
+        images_dict = {"img": combined_rgb, "accumulation": combined_acc, "depth": combined_depth}
 
         for i in range(self.config.num_proposal_iterations):
             key = f"prop_depth_{i}"
